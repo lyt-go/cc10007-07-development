@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link, Route, Routes } from 'react-router-dom'
 
+import { RoleCode, roleOptions, setOperatorRole } from './api/client'
+
 import Overview from './views/Overview'
 import SequenceView from './views/sequence'
 import RfmView from './views/rfm'
@@ -20,11 +22,17 @@ import DatadriftView from './views/datadrift'
 import PushplanView from './views/pushplan'
 import MetricdrillView from './views/metricdrill'
 import TacticlibView from './views/tacticlib'
+import PrecheckView from './views/precheck'
 
-const navItems = [{ label: "运营概览", path: "/" }, { label: "行为序列", path: "/sequence" }, { label: "RFM分层", path: "/rfm" }, { label: "流失预警", path: "/churn" }, { label: "智能推荐", path: "/recommend" }, { label: "归因建模", path: "/attrmodel" }, { label: "活动评估", path: "/activity" }, { label: "实时决策", path: "/realtime" }, { label: "预算分配", path: "/budget" }, { label: "LTV估算", path: "/lifetime" }, { label: "实验变体", path: "/abvariant" }, { label: "运营看板", path: "/dashboard" }, { label: "评分卡", path: "/scorecard" }, { label: "聚类分群", path: "/cluster" }, { label: "对比分析", path: "/comparison" }, { label: "数据漂移", path: "/datadrift" }, { label: "推送计划", path: "/pushplan" }, { label: "指标归因", path: "/metricdrill" }, { label: "策略库", path: "/tacticlib" }]
+const navItems = [{ label: "运营概览", path: "/" }, { label: "行为序列", path: "/sequence" }, { label: "RFM分层", path: "/rfm" }, { label: "流失预警", path: "/churn" }, { label: "智能推荐", path: "/recommend" }, { label: "归因建模", path: "/attrmodel" }, { label: "活动评估", path: "/activity" }, { label: "实时决策", path: "/realtime" }, { label: "预算分配", path: "/budget" }, { label: "LTV估算", path: "/lifetime" }, { label: "实验变体", path: "/abvariant" }, { label: "运营看板", path: "/dashboard" }, { label: "评分卡", path: "/scorecard" }, { label: "聚类分群", path: "/cluster" }, { label: "对比分析", path: "/comparison" }, { label: "数据漂移", path: "/datadrift" }, { label: "推送计划", path: "/pushplan" }, { label: "指标归因", path: "/metricdrill" }, { label: "策略库", path: "/tacticlib" }, { label: "发布预检", path: "/precheck" }]
 
 export default function App() {
-  const [operator] = useState('值班管理员')
+  const [role, setRole] = useState<RoleCode>('admin')
+
+  function changeRole(next: RoleCode) {
+    setOperatorRole(next)
+    setRole(next)
+  }
 
   return (
     <div className="app-shell">
@@ -41,7 +49,17 @@ export default function App() {
       <main className="app-main">
         <header className="app-head">
           <span className="head-desc">面向用户行为序列分析、RFM分层、流失预警、智能推荐、归因建模、活动效果评估与实时运营决策的数据分析工程平台。</span>
-          <span className="head-user">当前值班：{operator}</span>
+          <label className="head-user">
+            当前值班：
+            <select value={role} onChange={(event) => changeRole(event.target.value as RoleCode)}>
+              {roleOptions.map((item) => (
+                <option key={item.code} value={item.code}>
+                  {item.label}
+                  {item.writable ? '' : '（只读）'}
+                </option>
+              ))}
+            </select>
+          </label>
         </header>
         <Routes>
           <Route path="/" element={<Overview />} />
@@ -63,6 +81,7 @@ export default function App() {
           <Route path="/pushplan" element={<PushplanView />} />
           <Route path="/metricdrill" element={<MetricdrillView />} />
           <Route path="/tacticlib" element={<TacticlibView />} />
+          <Route path="/precheck" element={<PrecheckView />} />
         </Routes>
       </main>
     </div>

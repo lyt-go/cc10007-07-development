@@ -1,66 +1,43 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 
-import { request } from '@/api/client'
+import { canWrite, errorMessage, fetchJson, request } from '@/api/client'
 
 const ENDPOINT = '/api/recommend'
 const columns = [
-  "策略编号",
-  "推荐场景",
-  "召回算法",
-  "排序模型",
-  "冷启动策略",
-  "多样性权重",
-  "刷新频率",
-  "推荐条数上限"
+  '策略编号',
+  '推荐场景',
+  '召回算法',
+  '排序模型',
+  '冷启动策略',
+  '多样性权重',
+  '刷新频率',
+  '推荐条数上限',
+  '场景评分',
+  '复用策略编号',
+  '预检结论',
 ]
-const actions = [
-  "提交策略评审",
-  "上线策略",
-  "下线策略"
-]
-const statuses = [
-  "草稿",
-  "策略评审中",
-  "已上线",
-  "已下线"
-]
-const stats = [
-  {
-    "label": "推荐策略总数",
-    "value": 0
-  },
-  {
-    "label": "已上线策略",
-    "value": 0
-  },
-  {
-    "label": "评审中策略",
-    "value": 0
-  }
-]
+const actions = ['提交策略评审', '评审通过策略', '下线策略']
+const statuses = ['草稿', '策略评审中', '评审通过', '预检通过', '已上线', '已下线']
 
 type Row = Record<string, string | number | null>
 
 export default function RecommendView() {
+  const navigate = useNavigate()
   const [rows, setRows] = useState<Row[]>([])
   const [total, setTotal] = useState(0)
-  const [errorMessage, setErrorMessage] = useState('')
+  const [message, setMessage] = useState('')
+  const [errorMessageText, setErrorMessageText] = useState('')
   const [filters, setFilters] = useState<Record<string, string>>({})
-  const filterFields = useMemo(() => columns.slice(0, 3), [])
 
   const reload = useCallback(async () => {
-    setErrorMessage('')
     const query = new URLSearchParams(filters).toString()
     try {
-      const response = await request(`${ENDPOINT}?${query}`)
-      if (!response.ok) {
-        throw new Error('推荐策略列表读取失败')
-      }
-      const payload = await response.json()
+      const payload = await fetchJson<{ items: Row[]; total: number }>(`${ENDPOINT}?${query}`)
       setRows(payload.items ?? [])
       setTotal(payload.total ?? 0)
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '智能推荐列表读取失败')
+      setErrorMessageText(error instanceof Error ? error.message : '推荐策略列表读取失败')
     }
   }, [filters])
 
@@ -68,19 +45,24 @@ export default function RecommendView() {
     void reload()
   }, [reload])
 
-  async function runAction(action: string, row: Row) {
-    setErrorMessage('')
+  async function post(path: string, body: Record<string, unknown>, redirectTo?: string) {
+    setMessage('')
+    setErrorMessageText('')
     try {
-      const response = await request(`${ENDPOINT}/${row.id}/actions`, {
-        method: 'POST',
-        body: JSON.stringify({ action }),
-      })
-      if (!response.ok) {
-        throw new Error('智能推荐动作未生效，请稍后重试')
+      const response = await request(path, { method: 'POST', body: JSON.stringify(body) })
+      const payload = await response.json()
+      if (!response.ok || payload.ok === false) {
+        setErrorMessageText(await errorMessage(response, payload.message ?? '智能推荐动作未生效'))
+      } else {
+        setMessage(payload.message)
+        if (redirectTo) {
+          navigate(redirectTo)
+          return
+        }
       }
       await reload()
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '智能推荐操作失败')
+      setErrorMessageText(error instanceof Error ? error.message : '智能推荐操作失败')
     }
   }
 
@@ -89,12 +71,12 @@ export default function RecommendView() {
       <header className="page-head">
         <div>
           <h2>智能推荐管理</h2>
-          <p className="page-desc">配置智能推荐策略，定义召回、排序和冷启动方案。</p>
+          <p className="page-desc">
+            配置推荐场景的召回、排序与冷启动方案；上线前先执行策略复用预检，预检通过后才能进入上线列表。
+          </p>
         </div>
         <div className="page-actions">
-          <button className="btn primary" type="button" onClick={() => setErrorMessage('推荐策略登记入口尚未接入审批流')}>
-            登记推荐策略
-          </button>
+          <Link className="btn primary" to="/precheck">查看发布预检明细</Link>
           <button className="btn" type="button" onClick={() => window.open(`${ENDPOINT}/export`, '_blank')}>
             导出智能推荐清单
           </button>
@@ -102,25 +84,43 @@ export default function RecommendView() {
       </header>
 
       <div className="stat-row">
-        {stats.map((item) => (
-          <article key={item.label} className="stat-card">
-            <span className="stat-label">{item.label}</span>
-            <strong className="stat-value">{item.value}</strong>
-          </article>
-        ))}
+        <article className="stat-card">
+          <span className="stat-label">推荐策略总数</span>
+          <strong className="stat-value">{total}</strong>
+        </article>
+        <article className="stat-card">
+          <span className="stat-label">已上线策略</span>
+          <strong className="stat-value">{rows.filter((row) => row.status === '已上线').length}</strong>
+        </article>
+        <article className="stat-card">
+          <span className="stat-label">预检通过待上线</span>
+          <strong className="stat-value">{rows.filter((row) => row.status === '预检通过').length}</strong>
+        </article>
+        <article className="stat-card">
+          <span className="stat-label">评审中策略</span>
+          <strong className="stat-value">{rows.filter((row) => row.status === '策略评审中').length}</strong>
+        </article>
       </div>
 
       <form className="filter-bar" onSubmit={(event) => { event.preventDefault(); void reload() }}>
-        {filterFields.map((field) => (
-          <label key={field} className="filter-item">
-            <span>{field}</span>
-            <input
-              value={filters[field] ?? ''}
-              placeholder={`按${field}检索`}
-              onChange={(event) => setFilters((prev) => ({ ...prev, [field]: event.target.value }))}
-            />
-          </label>
-        ))}
+        <label className="filter-item">
+          <span>策略编号 / 推荐场景</span>
+          <input
+            value={filters.keyword ?? ''}
+            placeholder="按策略编号或推荐场景检索"
+            onChange={(event) => setFilters((prev) => ({ ...prev, keyword: event.target.value }))}
+          />
+        </label>
+        <label className="filter-item">
+          <span>状态</span>
+          <select
+            value={filters.status ?? ''}
+            onChange={(event) => setFilters((prev) => ({ ...prev, status: event.target.value }))}
+          >
+            <option value="">全部</option>
+            {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
+          </select>
+        </label>
         <button className="btn" type="submit">查询</button>
         <button className="btn ghost" type="button" onClick={() => setFilters({})}>重置条件</button>
       </form>
@@ -138,10 +138,32 @@ export default function RecommendView() {
               {columns.map((column) => <td key={column}>{row[column] ?? '—'}</td>)}
               <td className="row-actions">
                 {actions.map((action) => (
-                  <button key={action} className="link" type="button" onClick={() => void runAction(action, row)}>
+                  <button
+                    key={action}
+                    className="link"
+                    type="button"
+                    disabled={!canWrite()}
+                    onClick={() => void post(`${ENDPOINT}/${row.id}/actions`, { action })}
+                  >
                     {action}
                   </button>
                 ))}
+                <button
+                  className="link"
+                  type="button"
+                  disabled={!canWrite()}
+                  onClick={() => void post(`${ENDPOINT}/${row.id}/precheck`, { operator: '值班管理员' }, '/precheck')}
+                >
+                  发布预检
+                </button>
+                <button
+                  className="link"
+                  type="button"
+                  disabled={!canWrite()}
+                  onClick={() => void post(`${ENDPOINT}/${row.id}/launch`, {})}
+                >
+                  上线策略
+                </button>
               </td>
             </tr>
           ))}
@@ -155,7 +177,8 @@ export default function RecommendView() {
 
       <footer className="page-foot">
         <span>共 {total} 条智能推荐记录</span>
-        {errorMessage && <span className="error-text">{errorMessage}</span>}
+        {message && <span>{message}</span>}
+        {errorMessageText && <span className="error-text">{errorMessageText}</span>}
       </footer>
     </section>
   )

@@ -4,7 +4,9 @@
 """
 from __future__ import annotations
 
-from typing import Any
+import threading
+from contextlib import contextmanager
+from typing import Any, Iterator
 
 from app.seed import SEED_ROWS
 
@@ -14,6 +16,22 @@ class Store:
         self._tables: dict[str, list[dict[str, Any]]] = {
             name: [dict(row) for row in rows] for name, rows in SEED_ROWS.items()
         }
+        # 预检上线会同时写预检明细、推荐策略和策略库三张表，写入期间必须独占。
+        self.lock = threading.RLock()
+
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        """把一组跨模块写入包成一次提交；任一步抛错就整体回滚。"""
+        with self.lock:
+            snapshot = {
+                name: [dict(row) for row in rows]
+                for name, rows in self._tables.items()
+            }
+            try:
+                yield
+            except Exception:
+                self._tables = snapshot
+                raise
 
     def module_names(self) -> list[str]:
         return sorted(self._tables)
